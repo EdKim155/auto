@@ -107,9 +107,10 @@ class MessageMonitor:
             # Update cache
             if buttons:
                 self.button_cache.update_message(message_id, chat_id, text, buttons)
+                button_texts = [f"'{b.text}'" for b in buttons]
                 logger.debug(
                     f"{'Edit' if is_edit else 'New'} message {message_id}: "
-                    f"{len(buttons)} buttons, text: '{text[:50]}...'"
+                    f"{len(buttons)} buttons {button_texts}, text: '{text[:50]}...'"
                 )
             else:
                 logger.debug(

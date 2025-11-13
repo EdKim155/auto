@@ -73,6 +73,7 @@ class BotAutomation:
         # Control flags
         self.is_running = False
         self.current_message_id: Optional[int] = None
+        self.last_button_texts: Optional[list] = None  # Track button changes
 
     async def start(self) -> None:
         """Start the automation system."""
@@ -113,6 +114,7 @@ class BotAutomation:
         # Start automation
         self.state_machine.start_automation(message.id)
         self.current_message_id = message.id
+        self.last_button_texts = None  # Reset button tracking
 
         # Record edit for stabilization tracking
         self.stabilization_detector.record_edit(message.id)
@@ -131,9 +133,10 @@ class BotAutomation:
         # Record edit for stabilization tracking
         if is_edit:
             self.stabilization_detector.record_edit(message.id)
+            logger.debug(f"Message edit detected: {message.id}, current_message_id: {self.current_message_id}, is_active: {self.state_machine.is_active()}")
 
             # If we're waiting on this message, check if we should proceed
-            if self.state_machine.is_active() and message.id == self.current_message_id:
+            if self.state_machine.is_active():
                 asyncio.create_task(self._check_stabilization(message.id))
 
     async def _execute_step_1(self, message_id: int) -> None:
@@ -163,9 +166,21 @@ class BotAutomation:
 
             # Get message data
             msg_data = self.button_cache.get_message(message_id)
+
+            # If trigger message has no buttons, use the latest cached message with buttons
             if not msg_data or not msg_data.buttons:
-                self.state_machine.error("Step 1: No buttons found")
-                return
+                logger.info("Trigger message has no buttons, looking for cached menu...")
+                msg_data = self.button_cache.get_latest_message()
+
+                if msg_data and msg_data.buttons:
+                    logger.info(f"Using cached message {msg_data.message_id} with {len(msg_data.buttons)} buttons")
+                    # Update current message ID to the one we're using
+                    message_id = msg_data.message_id
+                    # Save current button state to detect changes
+                    self.last_button_texts = [b.text for b in msg_data.buttons]
+                else:
+                    self.state_machine.error("Step 1: No buttons found in trigger or cache")
+                    return
 
             # Find target button
             button = self.button_analyzer.find_button_by_keywords(
@@ -301,7 +316,7 @@ class BotAutomation:
                 logger.info(f"✓ Step 3 completed in {result.execution_time*1000:.1f}ms")
                 # Complete automation
                 self.state_machine.complete_automation()
-                await asyncio.sleep(1.0)  # Wait before returning to idle
+                await asyncio.sleep(0.1)  # Short wait before returning to idle
                 self.state_machine.reset()
             else:
                 self.state_machine.error(f"Step 3 click failed: {result.message}")
@@ -321,23 +336,68 @@ class BotAutomation:
         if not self.state_machine.is_active():
             return
 
-        # Check if this is a new message (potential next step)
-        if message_id != self.current_message_id:
-            # New message received - might be response to our click
-            msg_data = self.button_cache.get_message(message_id)
+        # Get message data
+        msg_data = self.button_cache.get_message(message_id)
 
-            if msg_data and msg_data.buttons:
-                # Update current message and proceed to next step
-                self.current_message_id = message_id
-                self.stabilization_detector.record_edit(message_id)
+        # Check if this message has buttons (response to our click)
+        if msg_data and msg_data.buttons:
+            # For STEP_1: Accept message with buttons (list response)
+            if self.state_machine.current_state == AutomationState.STEP_1:
+                # Wait briefly for message to finish editing
+                await asyncio.sleep(0.2)  # 200ms to ensure we get the final state
 
-                # Determine which step to execute based on current state
-                if self.state_machine.current_state == AutomationState.STEP_1:
+                # Check if we're still in STEP_1 (haven't processed this yet)
+                if self.state_machine.current_state != AutomationState.STEP_1:
+                    return
+
+                # Refresh msg_data to get latest
+                msg_data = self.button_cache.get_message(message_id)
+                if msg_data and msg_data.buttons:
+                    # Check if buttons have actually changed from the original menu
+                    current_button_texts = [b.text for b in msg_data.buttons]
+
+                    # If buttons are the same as before the click, skip (not the response yet)
+                    if self.last_button_texts and current_button_texts == self.last_button_texts:
+                        logger.debug(f"Buttons unchanged, waiting for actual response...")
+                        return
+
+                    # Any message with buttons after Step 1 is the transport list
+                    # It can contain 1-5+ transports, with or without truck emoji
+                    logger.info(f"Step 1 response detected in message {message_id} with {len(msg_data.buttons)} buttons")
+                    self.current_message_id = message_id
+                    self.last_button_texts = current_button_texts
                     self.state_machine.complete_step_1(message_id)
                     await self._execute_step_2(message_id)
-                elif self.state_machine.current_state == AutomationState.STEP_2:
-                    self.state_machine.complete_step_2(message_id)
-                    await self._execute_step_3(message_id)
+            # For STEP_2: Accept same message with confirmation buttons
+            elif self.state_machine.current_state == AutomationState.STEP_2:
+                # Wait briefly for message to finish editing
+                await asyncio.sleep(0.2)  # 200ms to ensure we get the final state
+
+                # Check if we're still in STEP_2 (haven't processed this yet)
+                if self.state_machine.current_state != AutomationState.STEP_2:
+                    return
+
+                # Refresh msg_data to get latest
+                msg_data = self.button_cache.get_message(message_id)
+                if msg_data and msg_data.buttons:
+                    # Check if buttons have changed
+                    current_button_texts = [b.text for b in msg_data.buttons]
+
+                    # If buttons are the same as before, skip
+                    if self.last_button_texts and current_button_texts == self.last_button_texts:
+                        logger.debug(f"Buttons unchanged, waiting for actual response...")
+                        return
+
+                    # Check if this looks like a confirmation screen (has confirmation button)
+                    button_texts_lower = [text.lower() for text in current_button_texts]
+                    has_confirm = any('подтверд' in text for text in button_texts_lower)
+
+                    if has_confirm:
+                        logger.info(f"Step 2 response detected in message {message_id} with confirmation buttons")
+                        self.current_message_id = message_id
+                        self.last_button_texts = current_button_texts
+                        self.state_machine.complete_step_2(message_id)
+                        await self._execute_step_3(message_id)
 
     async def _timeout_checker(self) -> None:
         """Periodically check for state timeouts."""
