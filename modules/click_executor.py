@@ -13,7 +13,8 @@ from telethon.errors import (
     MessageNotModifiedError,
     QueryIdInvalidError,
     FloodWaitError,
-    TimeoutError as TelethonTimeoutError
+    TimeoutError as TelethonTimeoutError,
+    DataInvalidError
 )
 
 from .button_cache import ButtonInfo
@@ -187,6 +188,21 @@ class ClickExecutor:
                         error=e,
                         execution_time=execution_time
                     )
+
+            except DataInvalidError as e:
+                # Session is invalid, need to restart application
+                logger.error(
+                    f"DataInvalidError: Session is invalid. Application restart required. "
+                    f"Error: {e}"
+                )
+                execution_time = (datetime.now() - start_time).total_seconds()
+                self.failed_clicks += 1
+                return ClickResult(
+                    success=False,
+                    message="Session invalid - restart required",
+                    error=e,
+                    execution_time=execution_time
+                )
 
             except Exception as e:
                 # Unexpected error

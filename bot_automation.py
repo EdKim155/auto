@@ -316,7 +316,7 @@ class BotAutomation:
                 logger.info(f"✓ Step 3 completed in {result.execution_time*1000:.1f}ms")
                 # Complete automation
                 self.state_machine.complete_automation()
-                await asyncio.sleep(0.1)  # Short wait before returning to idle
+                await asyncio.sleep(0.05)  # Short wait before returning to idle
                 self.state_machine.reset()
             else:
                 self.state_machine.error(f"Step 3 click failed: {result.message}")

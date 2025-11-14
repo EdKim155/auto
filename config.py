@@ -28,8 +28,8 @@ class Config:
 
     # Delays (in seconds)
     DELAY_AFTER_TRIGGER = 0.0  # No delay after trigger detection
-    DELAY_BETWEEN_CLICKS = 0.05  # 50ms delay between clicks
-    STABILIZATION_THRESHOLD = 0.1  # 100ms threshold for stabilization
+    DELAY_BETWEEN_CLICKS = 0.01  # 10ms delay between clicks (faster)
+    STABILIZATION_THRESHOLD = 0.05  # 50ms threshold for stabilization (faster)
 
     # Stabilization strategy: 'wait', 'predict', 'aggressive'
     STABILIZATION_STRATEGY = 'wait'
