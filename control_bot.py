@@ -1,5 +1,6 @@
 """
 Telegram Control Bot for managing automation sessions.
+Enhanced version with full session and bot management.
 """
 import os
 import logging
@@ -29,20 +30,41 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Conversation states
+# Conversation states for adding session
 (
-    ADDING_SESSION_PHONE,
-    ADDING_SESSION_API_ID,
-    ADDING_SESSION_API_HASH,
-    ADDING_SESSION_CODE,
-    ADDING_SESSION_PASSWORD,
-    ADDING_BOT_USERNAME,
-    ADDING_BOT_MODE
-) = range(7)
+    ADD_SESSION_PHONE,
+    ADD_SESSION_API_ID,
+    ADD_SESSION_API_HASH,
+    ADD_SESSION_CODE,
+    ADD_SESSION_PASSWORD
+) = range(5)
+
+# Conversation states for adding bot
+(
+    ADD_BOT_SESSION_SELECT,
+    ADD_BOT_USERNAME,
+    ADD_BOT_MODE,
+    ADD_BOT_STEP2_METHOD,
+    ADD_BOT_STEP2_KEYWORDS,
+    ADD_BOT_STEP2_INDEX
+) = range(5, 11)
+
+# Conversation states for reauthorization
+(
+    REAUTH_CODE,
+    REAUTH_PASSWORD
+) = range(11, 13)
+
+# Conversation states for Step 2 configuration
+(
+    CONFIG_STEP2_METHOD,
+    CONFIG_STEP2_KEYWORDS,
+    CONFIG_STEP2_INDEX
+) = range(13, 16)
 
 
 class ControlBot:
-    """Main control bot class"""
+    """Main control bot class with full management features"""
 
     def __init__(self, token: str, authorized_user_ids: list):
         """
@@ -56,8 +78,8 @@ class ControlBot:
         self.authorized_user_ids = authorized_user_ids
         self.application = None
 
-        # Temporary storage for session creation
-        self.temp_session_data = {}
+        # Temporary storage for conversations
+        self.temp_data = {}
 
     def is_authorized(self, user_id: int) -> bool:
         """Check if user is authorized"""
@@ -67,10 +89,13 @@ class ControlBot:
         """Check authorization and send error if not authorized"""
         user_id = update.effective_user.id
         if not self.is_authorized(user_id):
-            await update.message.reply_text(
-                "⛔ You are not authorized to use this bot.\n"
-                f"Your Telegram ID: {user_id}"
-            )
+            if update.message:
+                await update.message.reply_text(
+                    "⛔ Вы не авторизованы для использования этого бота.\n"
+                    f"Ваш Telegram ID: {user_id}"
+                )
+            elif update.callback_query:
+                await update.callback_query.answer("⛔ Доступ запрещен")
             return False
         return True
 
@@ -82,17 +107,16 @@ class ControlBot:
             return
 
         keyboard = [
-            [InlineKeyboardButton("📊 Status", callback_data="main_status")],
-            [InlineKeyboardButton("📱 Sessions", callback_data="main_sessions")],
-            [InlineKeyboardButton("🤖 Bots", callback_data="main_bots")],
-            [InlineKeyboardButton("💚 Health Check", callback_data="main_health")]
+            [InlineKeyboardButton("📊 Статус", callback_data="main_status")],
+            [InlineKeyboardButton("📱 Сессии", callback_data="main_sessions")],
+            [InlineKeyboardButton("🤖 Боты", callback_data="main_bots")],
+            [InlineKeyboardButton("💚 Проверка здоровья", callback_data="main_health")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            "🎮 *Control Panel*\n\n"
-            "Welcome to the bot automation control panel.\n"
-            "Choose an option below:",
+            "🎮 *Панель управления автоматизацией*\n\n"
+            "Добро пожаловать! Выберите опцию:",
             parse_mode='Markdown',
             reply_markup=reply_markup
         )
@@ -104,26 +128,26 @@ class ControlBot:
 
         status = session_manager.get_all_status()
 
-        text = "📊 *Overall Status*\n\n"
-        text += f"Total Sessions: {status['total_sessions']}\n"
-        text += f"Connected Sessions: {status['connected_sessions']}\n"
-        text += f"Total Automations: {status['total_automations']}\n"
-        text += f"Active Automations: {status['active_automations']}\n\n"
+        text = "📊 *Общий статус*\n\n"
+        text += f"Всего сессий: {status['total_sessions']}\n"
+        text += f"Подключено сессий: {status['connected_sessions']}\n"
+        text += f"Всего ботов: {status['total_automations']}\n"
+        text += f"Активных ботов: {status['active_automations']}\n\n"
 
         for session_status in status['sessions']:
             text += f"━━━━━━━━━━━━━━━━\n"
-            text += f"📱 *Session:* {session_status['phone']}\n"
-            text += f"Status: {'🟢 Connected' if session_status['is_connected'] else '🔴 Disconnected'}\n"
+            text += f"📱 *Сессия:* {session_status['phone']}\n"
+            text += f"Статус: {'🟢 Подключена' if session_status['is_connected'] else '🔴 Отключена'}\n"
 
             if session_status['bots']:
-                text += f"\n*Bots:*\n"
+                text += f"\n*Боты:*\n"
                 for bot in session_status['bots']:
                     status_emoji = "🟢" if bot['running'] else "⚫"
                     mode_emoji = "🔄" if bot['mode'] == 'full_cycle' else "📋"
                     text += f"{status_emoji} {bot['username']} {mode_emoji}\n"
-                    text += f"   Mode: {bot['mode']}\n"
-                    text += f"   Success Rate: {bot['statistics']['success_rate']:.1f}%\n"
-                    text += f"   Total Runs: {bot['statistics']['total_runs']}\n"
+                    text += f"   Режим: {bot['mode']}\n"
+                    text += f"   Успешность: {bot['statistics']['success_rate']:.1f}%\n"
+                    text += f"   Всего запусков: {bot['statistics']['total_runs']}\n"
 
         await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -136,13 +160,13 @@ class ControlBot:
 
         status = session_manager.get_all_status()
 
-        text = "📊 *Overall Status*\n\n"
-        text += f"Total Sessions: {status['total_sessions']}\n"
-        text += f"Connected Sessions: {status['connected_sessions']}\n"
-        text += f"Total Automations: {status['total_automations']}\n"
-        text += f"Active Automations: {status['active_automations']}\n"
+        text = "📊 *Общий статус*\n\n"
+        text += f"Всего сессий: {status['total_sessions']}\n"
+        text += f"Подключено сессий: {status['connected_sessions']}\n"
+        text += f"Всего ботов: {status['total_automations']}\n"
+        text += f"Активных ботов: {status['active_automations']}\n"
 
-        keyboard = [[InlineKeyboardButton("« Back", callback_data="back_to_main")]]
+        keyboard = [[InlineKeyboardButton("« Назад", callback_data="back_to_main")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
@@ -154,7 +178,7 @@ class ControlBot:
 
         sessions = db.get_all_sessions()
 
-        text = "📱 *Sessions*\n\n"
+        text = "📱 *Управление сессиями*\n\n"
 
         keyboard = []
         for session in sessions:
@@ -166,13 +190,13 @@ class ControlBot:
                 )
             ])
 
-        keyboard.append([InlineKeyboardButton("➕ Add Session", callback_data="add_session")])
-        keyboard.append([InlineKeyboardButton("« Back", callback_data="back_to_main")])
+        keyboard.append([InlineKeyboardButton("➕ Добавить сессию", callback_data="add_session_start")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="back_to_main")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if not sessions:
-            text += "No sessions configured yet.\n"
+            text += "Сессий пока нет.\n"
 
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
@@ -183,19 +207,19 @@ class ControlBot:
 
         sessions = db.get_all_sessions()
 
-        text = "🤖 *Select Session to Manage Bots*\n\n"
+        text = "🤖 *Выберите сессию для управления ботами*\n\n"
 
         keyboard = []
         for session in sessions:
             bot_count = len(db.get_bots_by_session(session.id))
             keyboard.append([
                 InlineKeyboardButton(
-                    f"{session.phone} ({bot_count} bots)",
+                    f"{session.phone} ({bot_count} ботов)",
                     callback_data=f"session_bots_{session.id}"
                 )
             ])
 
-        keyboard.append([InlineKeyboardButton("« Back", callback_data="back_to_main")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="back_to_main")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -208,28 +232,28 @@ class ControlBot:
 
         status = session_manager.get_all_status()
 
-        text = "💚 *Health Check*\n\n"
+        text = "💚 *Проверка здоровья системы*\n\n"
 
         all_healthy = True
 
         for session_status in status['sessions']:
             if not session_status['is_connected']:
                 all_healthy = False
-                text += f"🔴 Session {session_status['phone']} disconnected\n"
+                text += f"🔴 Сессия {session_status['phone']} отключена\n"
 
             for bot in session_status['bots']:
                 if bot['enabled'] and not bot['running']:
                     all_healthy = False
-                    text += f"⚠️ Bot {bot['username']} should be running but isn't\n"
+                    text += f"⚠️ Бот {bot['username']} должен работать, но неактивен\n"
 
                 if bot['statistics']['success_rate'] < 50 and bot['statistics']['total_runs'] > 10:
                     all_healthy = False
-                    text += f"⚠️ Bot {bot['username']} has low success rate ({bot['statistics']['success_rate']:.1f}%)\n"
+                    text += f"⚠️ Бот {bot['username']} имеет низкую успешность ({bot['statistics']['success_rate']:.1f}%)\n"
 
         if all_healthy:
-            text += "✅ All systems operational\n"
+            text += "✅ Все системы работают нормально\n"
 
-        keyboard = [[InlineKeyboardButton("« Back", callback_data="back_to_main")]]
+        keyboard = [[InlineKeyboardButton("« Назад", callback_data="back_to_main")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
@@ -240,15 +264,15 @@ class ControlBot:
         await query.answer()
 
         keyboard = [
-            [InlineKeyboardButton("📊 Status", callback_data="main_status")],
-            [InlineKeyboardButton("📱 Sessions", callback_data="main_sessions")],
-            [InlineKeyboardButton("🤖 Bots", callback_data="main_bots")],
-            [InlineKeyboardButton("💚 Health Check", callback_data="main_health")]
+            [InlineKeyboardButton("📊 Статус", callback_data="main_status")],
+            [InlineKeyboardButton("📱 Сессии", callback_data="main_sessions")],
+            [InlineKeyboardButton("🤖 Боты", callback_data="main_bots")],
+            [InlineKeyboardButton("💚 Проверка здоровья", callback_data="main_health")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            "🎮 *Control Panel*\n\nChoose an option:",
+            "🎮 *Панель управления*\n\nВыберите опцию:",
             parse_mode='Markdown',
             reply_markup=reply_markup
         )
@@ -263,13 +287,13 @@ class ControlBot:
         session_id = int(query.data.split('_')[1])
         session_status = session_manager.get_session_status(session_id)
 
-        text = f"📱 *Session: {session_status['phone']}*\n\n"
-        text += f"Status: {'🟢 Connected' if session_status['is_connected'] else '🔴 Disconnected'}\n"
+        text = f"📱 *Сессия: {session_status['phone']}*\n\n"
+        text += f"Статус: {'🟢 Подключена' if session_status['is_connected'] else '🔴 Отключена'}\n"
 
         if session_status['last_connected']:
-            text += f"Last Connected: {session_status['last_connected']}\n"
+            text += f"Последнее подключение: {session_status['last_connected']}\n"
 
-        text += f"\n*Bots ({len(session_status['bots'])}):*\n"
+        text += f"\n*Боты ({len(session_status['bots'])}):*\n"
 
         for bot in session_status['bots']:
             status_emoji = "🟢" if bot['running'] else "⚫"
@@ -278,13 +302,14 @@ class ControlBot:
         keyboard = []
 
         if session_status['is_connected']:
-            keyboard.append([InlineKeyboardButton("🔌 Disconnect", callback_data=f"session_disconnect_{session_id}")])
+            keyboard.append([InlineKeyboardButton("🔌 Отключить", callback_data=f"session_disconnect_{session_id}")])
         else:
-            keyboard.append([InlineKeyboardButton("🔌 Connect", callback_data=f"session_connect_{session_id}")])
+            keyboard.append([InlineKeyboardButton("🔌 Подключить", callback_data=f"session_connect_{session_id}")])
+            keyboard.append([InlineKeyboardButton("🔐 Переавторизация", callback_data=f"session_reauth_{session_id}")])
 
-        keyboard.append([InlineKeyboardButton("🤖 Manage Bots", callback_data=f"session_bots_{session_id}")])
-        keyboard.append([InlineKeyboardButton("🗑️ Delete Session", callback_data=f"session_delete_{session_id}")])
-        keyboard.append([InlineKeyboardButton("« Back", callback_data="main_sessions")])
+        keyboard.append([InlineKeyboardButton("🤖 Управление ботами", callback_data=f"session_bots_{session_id}")])
+        keyboard.append([InlineKeyboardButton("🗑️ Удалить сессию", callback_data=f"session_delete_confirm_{session_id}")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="main_sessions")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -293,7 +318,7 @@ class ControlBot:
     async def callback_session_connect(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Connect a session"""
         query = update.callback_query
-        await query.answer("Connecting session...")
+        await query.answer("Подключаем сессию...")
 
         session_id = int(query.data.split('_')[2])
 
@@ -301,43 +326,87 @@ class ControlBot:
             success = await session_manager.connect_session(session_id)
             if success:
                 await query.edit_message_text(
-                    "✅ Session connected successfully",
+                    "✅ Сессия успешно подключена",
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("« Back", callback_data=f"session_{session_id}")
+                        InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
                     ]])
                 )
             else:
                 await query.edit_message_text(
-                    "⚠️ Session needs authorization. Use /addsession to authorize.",
+                    "⚠️ Сессия требует авторизации. Используйте кнопку 'Переавторизация'.",
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("« Back", callback_data=f"session_{session_id}")
+                        InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
                     ]])
                 )
         except Exception as e:
             await query.edit_message_text(
-                f"❌ Error: {str(e)}",
+                f"❌ Ошибка: {str(e)}",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"session_{session_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
                 ]])
             )
 
     async def callback_session_disconnect(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Disconnect a session"""
         query = update.callback_query
-        await query.answer("Disconnecting session...")
+        await query.answer("Отключаем сессию...")
 
         session_id = int(query.data.split('_')[2])
 
         try:
             await session_manager.disconnect_session(session_id)
             await query.edit_message_text(
-                "✅ Session disconnected",
+                "✅ Сессия отключена",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"session_{session_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
                 ]])
             )
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {str(e)}")
+            await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+
+    async def callback_session_delete_confirm(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Confirm session deletion"""
+        query = update.callback_query
+        await query.answer()
+
+        session_id = int(query.data.split('_')[3])
+        session = db.get_session_by_id(session_id)
+
+        text = f"⚠️ *Подтверждение удаления*\n\n"
+        text += f"Вы уверены, что хотите удалить сессию *{session.phone}*?\n\n"
+        text += "Все боты этой сессии также будут удалены!"
+
+        keyboard = [
+            [InlineKeyboardButton("❌ Да, удалить", callback_data=f"session_delete_{session_id}")],
+            [InlineKeyboardButton("« Отмена", callback_data=f"session_{session_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def callback_session_delete(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Delete a session"""
+        query = update.callback_query
+        await query.answer("Удаляем сессию...")
+
+        session_id = int(query.data.split('_')[2])
+
+        try:
+            # First disconnect
+            if session_id in session_manager.sessions:
+                await session_manager.disconnect_session(session_id)
+
+            # Then delete
+            db.delete_session(session_id)
+
+            await query.edit_message_text(
+                "✅ Сессия удалена",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data="main_sessions")
+                ]])
+            )
+        except Exception as e:
+            await query.edit_message_text(f"❌ Ошибка: {str(e)}")
 
     # ==================== Bot Management ====================
 
@@ -350,7 +419,7 @@ class ControlBot:
         session = db.get_session_by_id(session_id)
         bots = db.get_bots_by_session(session_id)
 
-        text = f"🤖 *Bots for {session.phone}*\n\n"
+        text = f"🤖 *Боты для {session.phone}*\n\n"
 
         keyboard = []
         for bot in bots:
@@ -363,13 +432,13 @@ class ControlBot:
                 )
             ])
 
-        keyboard.append([InlineKeyboardButton("➕ Add Bot", callback_data=f"add_bot_{session_id}")])
-        keyboard.append([InlineKeyboardButton("« Back", callback_data="main_bots")])
+        keyboard.append([InlineKeyboardButton("➕ Добавить бота", callback_data=f"add_bot_start_{session_id}")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if not bots:
-            text += "No bots configured for this session.\n"
+            text += "Ботов пока нет.\n"
 
         await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
@@ -385,38 +454,47 @@ class ControlBot:
         is_running = bot_id in session_manager.automations
 
         text = f"🤖 *{bot.bot_username}*\n\n"
-        text += f"Status: {'🟢 Running' if is_running else '⚫ Stopped'}\n"
-        text += f"Mode: {bot.automation_mode}\n\n"
+        text += f"Статус: {'🟢 Работает' if is_running else '⚫ Остановлен'}\n"
+        text += f"Режим: {bot.automation_mode}\n"
+
+        # Step 2 configuration
+        if bot.step2_button_keywords:
+            text += f"Step 2: по ключевым словам ({bot.step2_button_keywords})\n"
+        else:
+            text += f"Step 2: кнопка #{bot.step2_button_index + 1}\n"
 
         if stats:
-            text += f"*Statistics:*\n"
-            text += f"Total Runs: {stats.total_runs}\n"
-            text += f"Success Rate: {stats.success_rate:.1f}%\n"
-            text += f"Total Clicks: {stats.total_clicks}\n"
-            text += f"Click Success: {stats.click_success_rate:.1f}%\n"
+            text += f"\n*Статистика:*\n"
+            text += f"Всего запусков: {stats.total_runs}\n"
+            text += f"Успешность: {stats.success_rate:.1f}%\n"
+            text += f"Всего кликов: {stats.total_clicks}\n"
+            text += f"Успешность кликов: {stats.click_success_rate:.1f}%\n"
 
             if stats.last_activity_at:
-                text += f"Last Activity: {stats.last_activity_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                text += f"Последняя активность: {stats.last_activity_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
 
             if stats.last_error:
-                text += f"\n⚠️ Last Error: {stats.last_error}\n"
+                text += f"\n⚠️ Последняя ошибка: {stats.last_error}\n"
 
         keyboard = []
 
         # Start/Stop button
         if is_running:
-            keyboard.append([InlineKeyboardButton("⏹️ Stop", callback_data=f"bot_stop_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("⏹️ Остановить", callback_data=f"bot_stop_{bot_id}")])
         else:
-            keyboard.append([InlineKeyboardButton("▶️ Start", callback_data=f"bot_start_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("▶️ Запустить", callback_data=f"bot_start_{bot_id}")])
 
         # Mode selection
         if bot.automation_mode == 'full_cycle':
-            keyboard.append([InlineKeyboardButton("📋 Switch to List Only", callback_data=f"bot_mode_list_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("📋 Переключить на List Only", callback_data=f"bot_mode_list_{bot_id}")])
         else:
-            keyboard.append([InlineKeyboardButton("🔄 Switch to Full Cycle", callback_data=f"bot_mode_full_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("🔄 Переключить на Full Cycle", callback_data=f"bot_mode_full_{bot_id}")])
 
-        keyboard.append([InlineKeyboardButton("🗑️ Delete Bot", callback_data=f"bot_delete_{bot_id}")])
-        keyboard.append([InlineKeyboardButton("« Back", callback_data=f"session_bots_{bot.session_id}")])
+        # Step 2 configuration
+        keyboard.append([InlineKeyboardButton("⚙️ Настроить Step 2", callback_data=f"config_step2_start_{bot_id}")])
+
+        keyboard.append([InlineKeyboardButton("🗑️ Удалить бота", callback_data=f"bot_delete_confirm_{bot_id}")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data=f"session_bots_{bot.session_id}")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -425,48 +503,48 @@ class ControlBot:
     async def callback_bot_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Start bot automation"""
         query = update.callback_query
-        await query.answer("Starting automation...")
+        await query.answer("Запускаем автоматизацию...")
 
         bot_id = int(query.data.split('_')[2])
 
         try:
             await session_manager.start_automation(bot_id)
             await query.edit_message_text(
-                "✅ Automation started",
+                "✅ Автоматизация запущена",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"bot_{bot_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}")
                 ]])
             )
         except Exception as e:
             await query.edit_message_text(
-                f"❌ Error: {str(e)}",
+                f"❌ Ошибка: {str(e)}",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"bot_{bot_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}")
                 ]])
             )
 
     async def callback_bot_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Stop bot automation"""
         query = update.callback_query
-        await query.answer("Stopping automation...")
+        await query.answer("Останавливаем автоматизацию...")
 
         bot_id = int(query.data.split('_')[2])
 
         try:
             await session_manager.stop_automation(bot_id)
             await query.edit_message_text(
-                "✅ Automation stopped",
+                "✅ Автоматизация остановлена",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"bot_{bot_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}")
                 ]])
             )
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {str(e)}")
+            await query.edit_message_text(f"❌ Ошибка: {str(e)}")
 
     async def callback_bot_mode_change(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Change bot mode"""
         query = update.callback_query
-        await query.answer("Changing mode...")
+        await query.answer("Меняем режим...")
 
         parts = query.data.split('_')
         mode_type = parts[2]  # 'list' or 'full'
@@ -477,13 +555,761 @@ class ControlBot:
         try:
             await session_manager.set_automation_mode(bot_id, mode)
             await query.edit_message_text(
-                f"✅ Mode changed to {mode}",
+                f"✅ Режим изменен на {mode}",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("« Back", callback_data=f"bot_{bot_id}")
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}")
                 ]])
             )
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {str(e)}")
+            await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+
+    async def callback_bot_delete_confirm(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Confirm bot deletion"""
+        query = update.callback_query
+        await query.answer()
+
+        bot_id = int(query.data.split('_')[3])
+        bot = db.get_bot_by_id(bot_id)
+
+        text = f"⚠️ *Подтверждение удаления*\n\n"
+        text += f"Вы уверены, что хотите удалить бота *{bot.bot_username}*?"
+
+        keyboard = [
+            [InlineKeyboardButton("❌ Да, удалить", callback_data=f"bot_delete_{bot_id}")],
+            [InlineKeyboardButton("« Отмена", callback_data=f"bot_{bot_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def callback_bot_delete(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Delete a bot"""
+        query = update.callback_query
+        await query.answer("Удаляем бота...")
+
+        bot_id = int(query.data.split('_')[2])
+        bot = db.get_bot_by_id(bot_id)
+        session_id = bot.session_id
+
+        try:
+            # First stop if running
+            if bot_id in session_manager.automations:
+                await session_manager.stop_automation(bot_id)
+
+            # Then delete
+            db.delete_bot(bot_id)
+
+            await query.edit_message_text(
+                "✅ Бот удален",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_bots_{session_id}")
+                ]])
+            )
+        except Exception as e:
+            await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+
+    # ==================== Add Session Conversation ====================
+
+    async def add_session_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start add session conversation"""
+        query = update.callback_query
+        await query.answer()
+
+        user_id = update.effective_user.id
+        self.temp_data[user_id] = {}
+
+        await query.edit_message_text(
+            "📱 *Добавление новой сессии*\n\n"
+            "Введите номер телефона в международном формате (например, +79991234567):",
+            parse_mode='Markdown'
+        )
+
+        return ADD_SESSION_PHONE
+
+    async def add_session_phone(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive phone number"""
+        user_id = update.effective_user.id
+        phone = update.message.text.strip()
+
+        # Validate phone
+        if not phone.startswith('+') or len(phone) < 10:
+            await update.message.reply_text(
+                "❌ Неверный формат номера. Используйте международный формат, например: +79991234567\n\n"
+                "Введите номер еще раз:"
+            )
+            return ADD_SESSION_PHONE
+
+        self.temp_data[user_id]['phone'] = phone
+
+        await update.message.reply_text(
+            "Отлично! Теперь введите ваш *API ID* от Telegram:\n"
+            "(Получить можно на https://my.telegram.org/apps)",
+            parse_mode='Markdown'
+        )
+
+        return ADD_SESSION_API_ID
+
+    async def add_session_api_id(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive API ID"""
+        user_id = update.effective_user.id
+        api_id_text = update.message.text.strip()
+
+        try:
+            api_id = int(api_id_text)
+            self.temp_data[user_id]['api_id'] = api_id
+
+            await update.message.reply_text(
+                "Отлично! Теперь введите ваш *API Hash* от Telegram:",
+                parse_mode='Markdown'
+            )
+
+            return ADD_SESSION_API_HASH
+        except ValueError:
+            await update.message.reply_text(
+                "❌ API ID должен быть числом. Введите еще раз:"
+            )
+            return ADD_SESSION_API_ID
+
+    async def add_session_api_hash(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive API Hash and create session"""
+        user_id = update.effective_user.id
+        api_hash = update.message.text.strip()
+
+        self.temp_data[user_id]['api_hash'] = api_hash
+
+        phone = self.temp_data[user_id]['phone']
+        api_id = self.temp_data[user_id]['api_id']
+
+        try:
+            # Create session
+            session = await session_manager.add_session(phone, api_id, api_hash)
+            self.temp_data[user_id]['session_id'] = session.id
+
+            # Request authorization code
+            result = await session_manager.authorize_session(session.id, phone)
+
+            if result['status'] == 'code_sent':
+                await update.message.reply_text(
+                    f"✅ Сессия создана!\n\n"
+                    f"📱 Код подтверждения отправлен в Telegram на номер {phone}\n\n"
+                    f"Введите код (например: 12345):"
+                )
+                return ADD_SESSION_CODE
+            else:
+                await update.message.reply_text(f"❌ Ошибка: {result['message']}")
+                return ConversationHandler.END
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка при создании сессии: {str(e)}")
+            return ConversationHandler.END
+
+    async def add_session_code(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive verification code"""
+        user_id = update.effective_user.id
+        code = update.message.text.strip()
+
+        session_id = self.temp_data[user_id]['session_id']
+        phone = self.temp_data[user_id]['phone']
+
+        try:
+            result = await session_manager.authorize_session(session_id, phone, code=code)
+
+            if result['status'] == 'authorized':
+                await update.message.reply_text(
+                    "✅ Сессия успешно авторизована!\n\n"
+                    "Теперь можете добавить ботов для этой сессии.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« Вернуться к сессиям", callback_data="main_sessions")
+                    ]])
+                )
+                return ConversationHandler.END
+
+            elif result['status'] == 'need_password':
+                await update.message.reply_text(
+                    "🔐 Требуется пароль двухфакторной аутентификации.\n\n"
+                    "Введите ваш 2FA пароль:"
+                )
+                return ADD_SESSION_PASSWORD
+
+            else:
+                await update.message.reply_text(f"❌ Ошибка: {result['message']}")
+                return ConversationHandler.END
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка при авторизации: {str(e)}")
+            return ConversationHandler.END
+
+    async def add_session_password(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive 2FA password"""
+        user_id = update.effective_user.id
+        password = update.message.text.strip()
+
+        session_id = self.temp_data[user_id]['session_id']
+
+        try:
+            result = await session_manager.authorize_session(session_id, None, password=password)
+
+            if result['status'] == 'authorized':
+                await update.message.reply_text(
+                    "✅ Сессия успешно авторизована с 2FA!\n\n"
+                    "Теперь можете добавить ботов для этой сессии.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« Вернуться к сессиям", callback_data="main_sessions")
+                    ]])
+                )
+                return ConversationHandler.END
+            else:
+                await update.message.reply_text(f"❌ Ошибка: {result['message']}")
+                return ConversationHandler.END
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка при авторизации: {str(e)}")
+            return ConversationHandler.END
+
+    async def add_session_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel add session conversation"""
+        user_id = update.effective_user.id
+        if user_id in self.temp_data:
+            del self.temp_data[user_id]
+
+        if update.message:
+            await update.message.reply_text(
+                "❌ Добавление сессии отменено.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data="main_sessions")
+                ]])
+            )
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(
+                "❌ Добавление сессии отменено.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data="main_sessions")
+                ]])
+            )
+
+        return ConversationHandler.END
+
+    # ==================== Add Bot Conversation ====================
+
+    async def add_bot_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start add bot conversation"""
+        query = update.callback_query
+        await query.answer()
+
+        session_id = int(query.data.split('_')[3])
+        session = db.get_session_by_id(session_id)
+
+        user_id = update.effective_user.id
+        self.temp_data[user_id] = {'session_id': session_id}
+
+        await query.edit_message_text(
+            f"🤖 *Добавление бота для {session.phone}*\n\n"
+            f"Введите username бота (например: @apri1l_test_bot):",
+            parse_mode='Markdown'
+        )
+
+        return ADD_BOT_USERNAME
+
+    async def add_bot_username(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive bot username"""
+        user_id = update.effective_user.id
+        username = update.message.text.strip()
+
+        # Add @ if not present
+        if not username.startswith('@'):
+            username = '@' + username
+
+        self.temp_data[user_id]['bot_username'] = username
+
+        keyboard = [
+            [InlineKeyboardButton("🔄 Full Cycle (3 кнопки)", callback_data="addbot_mode_full")],
+            [InlineKeyboardButton("📋 List Only (1 кнопка)", callback_data="addbot_mode_list")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            f"Отлично! Бот: {username}\n\n"
+            "Теперь выберите режим работы:",
+            reply_markup=reply_markup
+        )
+
+        return ADD_BOT_MODE
+
+    async def add_bot_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive automation mode"""
+        query = update.callback_query
+        await query.answer()
+
+        user_id = update.effective_user.id
+        mode_type = query.data.split('_')[2]  # 'full' or 'list'
+
+        mode = 'full_cycle' if mode_type == 'full' else 'list_only'
+        self.temp_data[user_id]['mode'] = mode
+
+        # If list_only, skip Step 2 config
+        if mode == 'list_only':
+            # Create bot immediately
+            await self._create_bot(user_id, query)
+            return ConversationHandler.END
+
+        # Otherwise ask about Step 2 configuration
+        keyboard = [
+            [InlineKeyboardButton("🔢 По номеру кнопки (1-я, 2-я, ...)", callback_data="addbot_step2_index")],
+            [InlineKeyboardButton("🔤 По ключевым словам", callback_data="addbot_step2_keywords")],
+            [InlineKeyboardButton("⏩ Пропустить (1-я кнопка)", callback_data="addbot_step2_skip")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            "⚙️ *Настройка Step 2*\n\n"
+            "Как выбирать кнопку на втором шаге?",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+
+        return ADD_BOT_STEP2_METHOD
+
+    async def add_bot_step2_method(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Choose Step 2 method"""
+        query = update.callback_query
+        await query.answer()
+
+        user_id = update.effective_user.id
+        method = query.data.split('_')[2]  # 'index', 'keywords', or 'skip'
+
+        if method == 'skip':
+            # Use default (first button)
+            self.temp_data[user_id]['step2_keywords'] = None
+            self.temp_data[user_id]['step2_index'] = 0
+            await self._create_bot(user_id, query)
+            return ConversationHandler.END
+
+        elif method == 'index':
+            await query.edit_message_text(
+                "🔢 *Выбор по номеру кнопки*\n\n"
+                "Введите номер кнопки (1 = первая, 2 = вторая, и т.д.):",
+                parse_mode='Markdown'
+            )
+            return ADD_BOT_STEP2_INDEX
+
+        elif method == 'keywords':
+            await query.edit_message_text(
+                "🔤 *Выбор по ключевым словам*\n\n"
+                "Введите ключевые слова через запятую (например: Москва,доставка):",
+                parse_mode='Markdown'
+            )
+            return ADD_BOT_STEP2_KEYWORDS
+
+    async def add_bot_step2_index(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive button index"""
+        user_id = update.effective_user.id
+        index_text = update.message.text.strip()
+
+        try:
+            index = int(index_text) - 1  # Convert to 0-based
+            if index < 0:
+                raise ValueError("Index must be >= 1")
+
+            self.temp_data[user_id]['step2_keywords'] = None
+            self.temp_data[user_id]['step2_index'] = index
+
+            await self._create_bot_from_message(user_id, update.message)
+            return ConversationHandler.END
+
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Введите корректный номер (целое число >= 1):"
+            )
+            return ADD_BOT_STEP2_INDEX
+
+    async def add_bot_step2_keywords(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive keywords"""
+        user_id = update.effective_user.id
+        keywords = update.message.text.strip()
+
+        self.temp_data[user_id]['step2_keywords'] = keywords
+        self.temp_data[user_id]['step2_index'] = 0
+
+        await self._create_bot_from_message(user_id, update.message)
+        return ConversationHandler.END
+
+    async def _create_bot(self, user_id: int, query):
+        """Helper to create bot"""
+        data = self.temp_data[user_id]
+
+        try:
+            bot = await session_manager.add_bot(
+                data['session_id'],
+                data['bot_username'],
+                data['mode']
+            )
+
+            # Update Step 2 config if present
+            if 'step2_keywords' in data or 'step2_index' in data:
+                db.update_bot_step2_config(
+                    bot.id,
+                    data.get('step2_keywords'),
+                    data.get('step2_index', 0)
+                )
+
+            await query.edit_message_text(
+                f"✅ Бот {data['bot_username']} успешно добавлен!\n\n"
+                f"Режим: {data['mode']}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К ботам", callback_data=f"session_bots_{data['session_id']}")
+                ]])
+            )
+
+        except Exception as e:
+            await query.edit_message_text(f"❌ Ошибка при создании бота: {str(e)}")
+
+    async def _create_bot_from_message(self, user_id: int, message):
+        """Helper to create bot from message context"""
+        data = self.temp_data[user_id]
+
+        try:
+            bot = await session_manager.add_bot(
+                data['session_id'],
+                data['bot_username'],
+                data['mode']
+            )
+
+            # Update Step 2 config
+            db.update_bot_step2_config(
+                bot.id,
+                data.get('step2_keywords'),
+                data.get('step2_index', 0)
+            )
+
+            await message.reply_text(
+                f"✅ Бот {data['bot_username']} успешно добавлен!\n\n"
+                f"Режим: {data['mode']}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К ботам", callback_data=f"session_bots_{data['session_id']}")
+                ]])
+            )
+
+        except Exception as e:
+            await message.reply_text(f"❌ Ошибка при создании бота: {str(e)}")
+
+    async def add_bot_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel add bot conversation"""
+        user_id = update.effective_user.id
+
+        session_id = None
+        if user_id in self.temp_data:
+            session_id = self.temp_data[user_id].get('session_id')
+            del self.temp_data[user_id]
+
+        if update.message:
+            await update.message.reply_text(
+                "❌ Добавление бота отменено.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_bots_{session_id}" if session_id else "main_bots")
+                ]])
+            )
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(
+                "❌ Добавление бота отменено.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_bots_{session_id}" if session_id else "main_bots")
+                ]])
+            )
+
+        return ConversationHandler.END
+
+    # ==================== Step 2 Configuration ====================
+
+    async def config_step2_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start Step 2 configuration"""
+        query = update.callback_query
+        await query.answer()
+
+        bot_id = int(query.data.split('_')[3])
+        bot = db.get_bot_by_id(bot_id)
+
+        user_id = update.effective_user.id
+        self.temp_data[user_id] = {'bot_id': bot_id}
+
+        current_config = ""
+        if bot.step2_button_keywords:
+            current_config = f"Текущая настройка: по ключевым словам ({bot.step2_button_keywords})"
+        else:
+            current_config = f"Текущая настройка: кнопка #{bot.step2_button_index + 1}"
+
+        keyboard = [
+            [InlineKeyboardButton("🔢 По номеру кнопки", callback_data="config_step2_index")],
+            [InlineKeyboardButton("🔤 По ключевым словам", callback_data="config_step2_keywords")],
+            [InlineKeyboardButton("« Отмена", callback_data=f"bot_{bot_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            f"⚙️ *Настройка Step 2 для {bot.bot_username}*\n\n"
+            f"{current_config}\n\n"
+            "Как выбирать кнопку на втором шаге?",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+
+        return CONFIG_STEP2_METHOD
+
+    async def config_step2_method(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Choose Step 2 configuration method"""
+        query = update.callback_query
+        await query.answer()
+
+        user_id = update.effective_user.id
+        method = query.data.split('_')[2]  # 'index' or 'keywords'
+
+        if method == 'index':
+            await query.edit_message_text(
+                "🔢 *Выбор по номеру кнопки*\n\n"
+                "Введите номер кнопки (1 = первая, 2 = вторая, и т.д.):",
+                parse_mode='Markdown'
+            )
+            return CONFIG_STEP2_INDEX
+
+        elif method == 'keywords':
+            await query.edit_message_text(
+                "🔤 *Выбор по ключевым словам*\n\n"
+                "Введите ключевые слова через запятую (например: Москва,доставка):",
+                parse_mode='Markdown'
+            )
+            return CONFIG_STEP2_KEYWORDS
+
+    async def config_step2_index(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive button index"""
+        user_id = update.effective_user.id
+        index_text = update.message.text.strip()
+
+        try:
+            index = int(index_text) - 1  # Convert to 0-based
+            if index < 0:
+                raise ValueError("Index must be >= 1")
+
+            bot_id = self.temp_data[user_id]['bot_id']
+
+            db.update_bot_step2_config(bot_id, keywords=None, button_index=index)
+
+            # If bot is running, restart it
+            if bot_id in session_manager.automations:
+                await session_manager.stop_automation(bot_id)
+                await session_manager.start_automation(bot_id)
+
+            await update.message.reply_text(
+                f"✅ Step 2 настроен: кнопка #{index + 1}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад к боту", callback_data=f"bot_{bot_id}")
+                ]])
+            )
+
+            return ConversationHandler.END
+
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Введите корректный номер (целое число >= 1):"
+            )
+            return CONFIG_STEP2_INDEX
+
+    async def config_step2_keywords(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive keywords"""
+        user_id = update.effective_user.id
+        keywords = update.message.text.strip()
+
+        bot_id = self.temp_data[user_id]['bot_id']
+
+        db.update_bot_step2_config(bot_id, keywords=keywords, button_index=0)
+
+        # If bot is running, restart it
+        if bot_id in session_manager.automations:
+            await session_manager.stop_automation(bot_id)
+            await session_manager.start_automation(bot_id)
+
+        await update.message.reply_text(
+            f"✅ Step 2 настроен: по ключевым словам ({keywords})",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("« Назад к боту", callback_data=f"bot_{bot_id}")
+            ]])
+        )
+
+        return ConversationHandler.END
+
+    async def config_step2_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel Step 2 configuration"""
+        user_id = update.effective_user.id
+
+        bot_id = None
+        if user_id in self.temp_data:
+            bot_id = self.temp_data[user_id].get('bot_id')
+            del self.temp_data[user_id]
+
+        if update.message:
+            await update.message.reply_text(
+                "❌ Настройка отменена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}" if bot_id else "main_bots")
+                ]])
+            )
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(
+                "❌ Настройка отменена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"bot_{bot_id}" if bot_id else "main_bots")
+                ]])
+            )
+
+        return ConversationHandler.END
+
+    # ==================== Reauthorization ====================
+
+    async def reauth_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start reauthorization"""
+        query = update.callback_query
+        await query.answer()
+
+        session_id = int(query.data.split('_')[2])
+        session = db.get_session_by_id(session_id)
+
+        user_id = update.effective_user.id
+        self.temp_data[user_id] = {'session_id': session_id}
+
+        try:
+            # Request new code
+            result = await session_manager.authorize_session(session_id, session.phone)
+
+            if result['status'] == 'code_sent':
+                await query.edit_message_text(
+                    f"🔐 *Переавторизация {session.phone}*\n\n"
+                    f"Код подтверждения отправлен в Telegram.\n\n"
+                    f"Введите код:",
+                    parse_mode='Markdown'
+                )
+                return REAUTH_CODE
+            else:
+                await query.edit_message_text(
+                    f"❌ Ошибка: {result['message']}",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
+                    ]])
+                )
+                return ConversationHandler.END
+
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}")
+                ]])
+            )
+            return ConversationHandler.END
+
+    async def reauth_code(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive reauth code"""
+        user_id = update.effective_user.id
+        code = update.message.text.strip()
+
+        session_id = self.temp_data[user_id]['session_id']
+        session = db.get_session_by_id(session_id)
+
+        try:
+            result = await session_manager.authorize_session(session_id, session.phone, code=code)
+
+            if result['status'] == 'authorized':
+                await update.message.reply_text(
+                    "✅ Сессия успешно переавторизована!",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                    ]])
+                )
+                return ConversationHandler.END
+
+            elif result['status'] == 'need_password':
+                await update.message.reply_text(
+                    "🔐 Требуется пароль 2FA.\n\n"
+                    "Введите ваш пароль:"
+                )
+                return REAUTH_PASSWORD
+
+            else:
+                await update.message.reply_text(
+                    f"❌ Ошибка: {result['message']}",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                    ]])
+                )
+                return ConversationHandler.END
+
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                ]])
+            )
+            return ConversationHandler.END
+
+    async def reauth_password(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive reauth password"""
+        user_id = update.effective_user.id
+        password = update.message.text.strip()
+
+        session_id = self.temp_data[user_id]['session_id']
+
+        try:
+            result = await session_manager.authorize_session(session_id, None, password=password)
+
+            if result['status'] == 'authorized':
+                await update.message.reply_text(
+                    "✅ Сессия успешно переавторизована с 2FA!",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                    ]])
+                )
+                return ConversationHandler.END
+            else:
+                await update.message.reply_text(
+                    f"❌ Ошибка: {result['message']}",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                    ]])
+                )
+                return ConversationHandler.END
+
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ Ошибка: {str(e)}",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К сессии", callback_data=f"session_{session_id}")
+                ]])
+            )
+            return ConversationHandler.END
+
+    async def reauth_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Cancel reauthorization"""
+        user_id = update.effective_user.id
+
+        session_id = None
+        if user_id in self.temp_data:
+            session_id = self.temp_data[user_id].get('session_id')
+            del self.temp_data[user_id]
+
+        if update.message:
+            await update.message.reply_text(
+                "❌ Переавторизация отменена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}" if session_id else "main_sessions")
+                ]])
+            )
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(
+                "❌ Переавторизация отменена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data=f"session_{session_id}" if session_id else "main_sessions")
+                ]])
+            )
+
+        return ConversationHandler.END
 
     # ==================== Callback Router ====================
 
@@ -505,12 +1331,23 @@ class ControlBot:
             await self.callback_back_to_main(update, context)
 
         # Session management
-        elif data.startswith("session_") and not data.startswith("session_bots_") and not data.startswith("session_connect_") and not data.startswith("session_disconnect_"):
+        elif data.startswith("session_") and not any([
+            data.startswith("session_bots_"),
+            data.startswith("session_connect_"),
+            data.startswith("session_disconnect_"),
+            data.startswith("session_delete_confirm_"),
+            data.startswith("session_delete_"),
+            data.startswith("session_reauth_")
+        ]):
             await self.callback_session_detail(update, context)
         elif data.startswith("session_connect_"):
             await self.callback_session_connect(update, context)
         elif data.startswith("session_disconnect_"):
             await self.callback_session_disconnect(update, context)
+        elif data.startswith("session_delete_confirm_"):
+            await self.callback_session_delete_confirm(update, context)
+        elif data.startswith("session_delete_") and not data.startswith("session_delete_confirm_"):
+            await self.callback_session_delete(update, context)
         elif data.startswith("session_bots_"):
             await self.callback_session_bots(update, context)
 
@@ -521,6 +1358,10 @@ class ControlBot:
             await self.callback_bot_stop(update, context)
         elif data.startswith("bot_mode_"):
             await self.callback_bot_mode_change(update, context)
+        elif data.startswith("bot_delete_confirm_"):
+            await self.callback_bot_delete_confirm(update, context)
+        elif data.startswith("bot_delete_") and not data.startswith("bot_delete_confirm_"):
+            await self.callback_bot_delete(update, context)
         elif data.startswith("bot_"):
             await self.callback_bot_detail(update, context)
 
@@ -543,11 +1384,92 @@ class ControlBot:
         logger.info("Starting control bot...")
 
         # Create application
-        self.application = Application.builder().token(self.token).post_init(self.post_init).post_shutdown(self.post_shutdown).build()
+        self.application = (
+            Application.builder()
+            .token(self.token)
+            .post_init(self.post_init)
+            .post_shutdown(self.post_shutdown)
+            .build()
+        )
 
-        # Add handlers
+        # Add basic handlers
         self.application.add_handler(CommandHandler("start", self.cmd_start))
         self.application.add_handler(CommandHandler("status", self.cmd_status))
+
+        # Add session conversation
+        add_session_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(self.add_session_start, pattern="^add_session_start$")
+            ],
+            states={
+                ADD_SESSION_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_session_phone)],
+                ADD_SESSION_API_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_session_api_id)],
+                ADD_SESSION_API_HASH: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_session_api_hash)],
+                ADD_SESSION_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_session_code)],
+                ADD_SESSION_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_session_password)],
+            },
+            fallbacks=[CommandHandler("cancel", self.add_session_cancel)],
+            name="add_session",
+            persistent=False
+        )
+        self.application.add_handler(add_session_conv)
+
+        # Add bot conversation
+        add_bot_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(self.add_bot_start, pattern="^add_bot_start_\d+$")
+            ],
+            states={
+                ADD_BOT_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_bot_username)],
+                ADD_BOT_MODE: [
+                    CallbackQueryHandler(self.add_bot_mode, pattern="^addbot_mode_(full|list)$")
+                ],
+                ADD_BOT_STEP2_METHOD: [
+                    CallbackQueryHandler(self.add_bot_step2_method, pattern="^addbot_step2_(index|keywords|skip)$")
+                ],
+                ADD_BOT_STEP2_INDEX: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_bot_step2_index)],
+                ADD_BOT_STEP2_KEYWORDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.add_bot_step2_keywords)],
+            },
+            fallbacks=[CommandHandler("cancel", self.add_bot_cancel)],
+            name="add_bot",
+            persistent=False
+        )
+        self.application.add_handler(add_bot_conv)
+
+        # Step 2 configuration conversation
+        config_step2_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(self.config_step2_start, pattern="^config_step2_start_\d+$")
+            ],
+            states={
+                CONFIG_STEP2_METHOD: [
+                    CallbackQueryHandler(self.config_step2_method, pattern="^config_step2_(index|keywords)$")
+                ],
+                CONFIG_STEP2_INDEX: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.config_step2_index)],
+                CONFIG_STEP2_KEYWORDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.config_step2_keywords)],
+            },
+            fallbacks=[CommandHandler("cancel", self.config_step2_cancel)],
+            name="config_step2",
+            persistent=False
+        )
+        self.application.add_handler(config_step2_conv)
+
+        # Reauthorization conversation
+        reauth_conv = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(self.reauth_start, pattern="^session_reauth_\d+$")
+            ],
+            states={
+                REAUTH_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.reauth_code)],
+                REAUTH_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.reauth_password)],
+            },
+            fallbacks=[CommandHandler("cancel", self.reauth_cancel)],
+            name="reauth",
+            persistent=False
+        )
+        self.application.add_handler(reauth_conv)
+
+        # Add callback handler (must be last)
         self.application.add_handler(CallbackQueryHandler(self.callback_handler))
 
         # Start bot

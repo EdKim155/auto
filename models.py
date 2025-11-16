@@ -38,6 +38,11 @@ class TargetBot(Base):
     bot_username = Column(String, nullable=False)
     automation_enabled = Column(Boolean, default=False)
     automation_mode = Column(String, default='full_cycle')  # 'full_cycle' or 'list_only'
+
+    # Step 2 button configuration
+    step2_button_keywords = Column(String, nullable=True)  # Comma-separated keywords or None for first button
+    step2_button_index = Column(Integer, default=0)  # Button index (0 = first button, 1 = second, etc.)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

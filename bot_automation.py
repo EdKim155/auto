@@ -30,7 +30,14 @@ class BotAutomation:
     Implements the complete automation workflow from TZ Section 5.
     """
 
-    def __init__(self, client: TelegramClient, bot_entity, mode: str = 'full_cycle'):
+    def __init__(
+        self,
+        client: TelegramClient,
+        bot_entity,
+        mode: str = 'full_cycle',
+        step2_button_keywords: Optional[str] = None,
+        step2_button_index: int = 0
+    ):
         """
         Initialize bot automation.
 
@@ -38,10 +45,16 @@ class BotAutomation:
             client: Telethon client
             bot_entity: Target bot entity
             mode: Automation mode - 'full_cycle' (all 3 steps) or 'list_only' (only step 1)
+            step2_button_keywords: Keywords for finding Step 2 button (comma-separated) or None for index-based
+            step2_button_index: Button index for Step 2 (0 = first button, 1 = second, etc.)
         """
         self.client = client
         self.bot_entity = bot_entity
         self.mode = mode  # 'full_cycle' or 'list_only'
+
+        # Step 2 button configuration
+        self.step2_button_keywords = step2_button_keywords
+        self.step2_button_index = step2_button_index
 
         # Initialize all modules
         self.button_cache = ButtonCache(max_messages=Config.MAX_CACHED_MESSAGES)
@@ -256,8 +269,26 @@ class BotAutomation:
                 self.state_machine.error("Step 2: No buttons found")
                 return
 
-            # Get first button (first transport in list)
-            button = self.button_analyzer.get_first_button(msg_data.buttons)
+            # Find button using configured method
+            button = None
+
+            # Try keywords first if configured
+            if self.step2_button_keywords:
+                keywords = [k.strip() for k in self.step2_button_keywords.split(',') if k.strip()]
+                if keywords:
+                    button = self.button_analyzer.find_button_by_keywords(msg_data.buttons, keywords)
+                    if button:
+                        logger.info(f"Found Step 2 button by keywords: '{button.text}'")
+
+            # Fallback to index-based selection
+            if not button:
+                if self.step2_button_index < len(msg_data.buttons):
+                    button = msg_data.buttons[self.step2_button_index]
+                    logger.info(f"Using Step 2 button by index {self.step2_button_index}: '{button.text}'")
+                else:
+                    # If index out of range, use first button
+                    logger.warning(f"Step 2 button index {self.step2_button_index} out of range, using first button")
+                    button = self.button_analyzer.get_first_button(msg_data.buttons)
 
             if not button:
                 self.state_machine.error("Step 2: No button available")
