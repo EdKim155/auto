@@ -144,8 +144,9 @@ class ControlBot:
                 for bot in session_status['bots']:
                     status_emoji = "🟢" if bot['running'] else "⚫"
                     mode_emoji = "🔄" if bot['mode'] == 'full_cycle' else "📋"
+                    mode_text = "Полный цикл" if bot['mode'] == 'full_cycle' else "Только список"
                     text += f"{status_emoji} {bot['username']} {mode_emoji}\n"
-                    text += f"   Режим: {bot['mode']}\n"
+                    text += f"   Режим: {mode_text}\n"
                     text += f"   Успешность: {bot['statistics']['success_rate']:.1f}%\n"
                     text += f"   Всего запусков: {bot['statistics']['total_runs']}\n"
 
@@ -453,15 +454,17 @@ class ControlBot:
 
         is_running = bot_id in session_manager.automations
 
+        mode_text = "Полный цикл" if bot.automation_mode == 'full_cycle' else "Только список"
+
         text = f"🤖 *{bot.bot_username}*\n\n"
         text += f"Статус: {'🟢 Работает' if is_running else '⚫ Остановлен'}\n"
-        text += f"Режим: {bot.automation_mode}\n"
+        text += f"Режим: {mode_text}\n"
 
         # Step 2 configuration
         if bot.step2_button_keywords:
-            text += f"Step 2: по ключевым словам ({bot.step2_button_keywords})\n"
+            text += f"Шаг 2: по ключевым словам ({bot.step2_button_keywords})\n"
         else:
-            text += f"Step 2: кнопка #{bot.step2_button_index + 1}\n"
+            text += f"Шаг 2: кнопка #{bot.step2_button_index + 1}\n"
 
         if stats:
             text += f"\n*Статистика:*\n"
@@ -486,12 +489,12 @@ class ControlBot:
 
         # Mode selection
         if bot.automation_mode == 'full_cycle':
-            keyboard.append([InlineKeyboardButton("📋 Переключить на List Only", callback_data=f"bot_mode_list_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("📋 Переключить на режим 'Только список'", callback_data=f"bot_mode_list_{bot_id}")])
         else:
-            keyboard.append([InlineKeyboardButton("🔄 Переключить на Full Cycle", callback_data=f"bot_mode_full_{bot_id}")])
+            keyboard.append([InlineKeyboardButton("🔄 Переключить на режим 'Полный цикл'", callback_data=f"bot_mode_full_{bot_id}")])
 
         # Step 2 configuration
-        keyboard.append([InlineKeyboardButton("⚙️ Настроить Step 2", callback_data=f"config_step2_start_{bot_id}")])
+        keyboard.append([InlineKeyboardButton("⚙️ Настроить Шаг 2", callback_data=f"config_step2_start_{bot_id}")])
 
         keyboard.append([InlineKeyboardButton("🗑️ Удалить бота", callback_data=f"bot_delete_confirm_{bot_id}")])
         keyboard.append([InlineKeyboardButton("« Назад", callback_data=f"session_bots_{bot.session_id}")])
@@ -822,8 +825,8 @@ class ControlBot:
         self.temp_data[user_id]['bot_username'] = username
 
         keyboard = [
-            [InlineKeyboardButton("🔄 Full Cycle (3 кнопки)", callback_data="addbot_mode_full")],
-            [InlineKeyboardButton("📋 List Only (1 кнопка)", callback_data="addbot_mode_list")]
+            [InlineKeyboardButton("🔄 Полный цикл (3 кнопки)", callback_data="addbot_mode_full")],
+            [InlineKeyboardButton("📋 Только список (1 кнопка)", callback_data="addbot_mode_list")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -861,7 +864,7 @@ class ControlBot:
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            "⚙️ *Настройка Step 2*\n\n"
+            "⚙️ *Настройка Шага 2*\n\n"
             "Как выбирать кнопку на втором шаге?",
             parse_mode='Markdown',
             reply_markup=reply_markup
@@ -952,9 +955,11 @@ class ControlBot:
                     data.get('step2_index', 0)
                 )
 
+            mode_text = "Полный цикл" if data['mode'] == 'full_cycle' else "Только список"
+
             await query.edit_message_text(
                 f"✅ Бот {data['bot_username']} успешно добавлен!\n\n"
-                f"Режим: {data['mode']}",
+                f"Режим: {mode_text}",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("« К ботам", callback_data=f"session_bots_{data['session_id']}")
                 ]])
@@ -981,9 +986,11 @@ class ControlBot:
                 data.get('step2_index', 0)
             )
 
+            mode_text = "Полный цикл" if data['mode'] == 'full_cycle' else "Только список"
+
             await message.reply_text(
                 f"✅ Бот {data['bot_username']} успешно добавлен!\n\n"
-                f"Режим: {data['mode']}",
+                f"Режим: {mode_text}",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("« К ботам", callback_data=f"session_bots_{data['session_id']}")
                 ]])
@@ -1045,7 +1052,7 @@ class ControlBot:
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            f"⚙️ *Настройка Step 2 для {bot.bot_username}*\n\n"
+            f"⚙️ *Настройка Шага 2 для {bot.bot_username}*\n\n"
             f"{current_config}\n\n"
             "Как выбирать кнопку на втором шаге?",
             parse_mode='Markdown',
@@ -1098,7 +1105,7 @@ class ControlBot:
                 await session_manager.start_automation(bot_id)
 
             await update.message.reply_text(
-                f"✅ Step 2 настроен: кнопка #{index + 1}",
+                f"✅ Шаг 2 настроен: кнопка #{index + 1}",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("« Назад к боту", callback_data=f"bot_{bot_id}")
                 ]])
@@ -1127,7 +1134,7 @@ class ControlBot:
             await session_manager.start_automation(bot_id)
 
         await update.message.reply_text(
-            f"✅ Step 2 настроен: по ключевым словам ({keywords})",
+            f"✅ Шаг 2 настроен: по ключевым словам ({keywords})",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("« Назад к боту", callback_data=f"bot_{bot_id}")
             ]])
