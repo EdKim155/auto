@@ -1,5 +1,10 @@
 # Environment variables
 .env
+.env.control_bot
+
+# Control Panel
+control_panel.db
+sessions/
 
 # Python
 __pycache__/

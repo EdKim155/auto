@@ -1,2 +1,6 @@
 telethon>=1.28.0
 python-dotenv>=0.19.0
+
+# Control Panel dependencies
+python-telegram-bot>=20.0
+sqlalchemy>=2.0.0

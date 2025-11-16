@@ -1,6 +1,7 @@
 """
-Main Bot Automation Class
+Main Bot Automation Class (2nd Button Version)
 Orchestrates all modules to implement the complete automation workflow.
+Modified to click the SECOND button in Step 2 instead of the first.
 """
 
 import logging
@@ -24,10 +25,11 @@ from modules import (
 logger = logging.getLogger(__name__)
 
 
-class BotAutomation:
+class BotAutomation2nd:
     """
-    Main automation orchestrator.
+    Main automation orchestrator (2nd button version).
     Implements the complete automation workflow from TZ Section 5.
+    Modified to click the SECOND button in Step 2.
     """
 
     def __init__(self, client: TelegramClient, bot_entity, mode: str = 'full_cycle'):
@@ -79,14 +81,14 @@ class BotAutomation:
 
     async def start(self) -> None:
         """Start the automation system."""
-        logger.info("Starting bot automation...")
+        logger.info("Starting bot automation (2nd button version)...")
         Config.display()
 
         # Register message handlers
         self.message_monitor.register_handlers()
 
         self.is_running = True
-        logger.info("✓ Bot automation started. Waiting for triggers...")
+        logger.info("✓ Bot automation started (2nd button version). Waiting for triggers...")
 
         # Start timeout checker
         asyncio.create_task(self._timeout_checker())
@@ -231,13 +233,13 @@ class BotAutomation:
 
     async def _execute_step_2(self, message_id: int) -> None:
         """
-        Execute Step 2: Click first transport in list.
+        Execute Step 2: Click SECOND transport in list.
 
         Args:
             message_id: List message ID
         """
         try:
-            logger.info("=== STEP 2: Clicking first transport ===")
+            logger.info("=== STEP 2: Clicking SECOND transport ===")
 
             # Wait for stabilization
             logger.debug("Waiting for message stabilization...")
@@ -256,14 +258,21 @@ class BotAutomation:
                 self.state_machine.error("Step 2: No buttons found")
                 return
 
-            # Get first button (first transport in list)
-            button = self.button_analyzer.get_first_button(msg_data.buttons)
+            # Get SECOND button (second transport in list)
+            # Try to get button at position [1, 0] (second row, first column)
+            button = self.button_analyzer.get_button_at_position(msg_data.buttons, row=1, column=0)
+
+            # Fallback: if position-based search fails, try getting second button from list
+            if not button and len(msg_data.buttons) >= 2:
+                sorted_buttons = sorted(msg_data.buttons, key=lambda b: (b.row, b.column))
+                button = sorted_buttons[1]
+                logger.info(f"Using second button from sorted list: '{button.text}'")
 
             if not button:
-                self.state_machine.error("Step 2: No button available")
+                self.state_machine.error("Step 2: Second button not available (need at least 2 buttons)")
                 return
 
-            logger.info(f"Target button: '{button.text}' at [{button.row},{button.column}]")
+            logger.info(f"Target button (SECOND): '{button.text}' at [{button.row},{button.column}]")
 
             # Click button
             result = await self.click_executor.click_button_info(message_id, button)
@@ -458,7 +467,7 @@ class BotAutomation:
         status = self.get_status()
 
         print("\n" + "="*60)
-        print("AUTOMATION STATUS")
+        print("AUTOMATION STATUS (2nd Button Version)")
         print("="*60)
 
         print(f"\nRunning: {'Yes' if status['running'] else 'No'}")
