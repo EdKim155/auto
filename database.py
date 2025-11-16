@@ -198,6 +198,26 @@ class Database:
         finally:
             db.close()
 
+    def update_bot_step2_config(self, bot_id: int, keywords: str = None, button_index: int = 0):
+        """
+        Update Step 2 button configuration for a bot.
+
+        Args:
+            bot_id: Bot ID
+            keywords: Comma-separated keywords or None for index-based selection
+            button_index: Button index (0 = first button)
+        """
+        db = self.get_session()
+        try:
+            bot = db.query(TargetBot).filter(TargetBot.id == bot_id).first()
+            if bot:
+                bot.step2_button_keywords = keywords
+                bot.step2_button_index = button_index
+                bot.updated_at = datetime.utcnow()
+                db.commit()
+        finally:
+            db.close()
+
     def delete_bot(self, bot_id: int):
         """Delete a target bot"""
         db = self.get_session()

@@ -338,8 +338,14 @@ class SessionManager:
             # Get bot entity
             bot_entity = await client.get_entity(bot.bot_username)
 
-            # Create automation instance
-            automation = BotAutomation(client, bot_entity, mode=bot.automation_mode)
+            # Create automation instance with Step 2 configuration
+            automation = BotAutomation(
+                client,
+                bot_entity,
+                mode=bot.automation_mode,
+                step2_button_keywords=bot.step2_button_keywords,
+                step2_button_index=bot.step2_button_index or 0
+            )
 
             # Start automation
             await automation.start()
