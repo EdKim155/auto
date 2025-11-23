@@ -98,11 +98,49 @@ class BotAutomation:
         # Register message handlers
         self.message_monitor.register_handlers()
 
+        # Initialize cache with recent messages
+        await self._initialize_cache()
+
         self.is_running = True
         logger.info("✓ Bot automation started. Waiting for triggers...")
 
         # Start timeout checker
         asyncio.create_task(self._timeout_checker())
+
+    async def _initialize_cache(self) -> None:
+        """Initialize cache by fetching recent messages from bot."""
+        try:
+            logger.info("Initializing cache with recent messages...")
+
+            # Fetch last 10 messages from bot
+            messages = await self.client.get_messages(
+                self.bot_entity,
+                limit=10
+            )
+
+            if not messages:
+                logger.warning("No messages found in chat history")
+                return
+
+            # Process messages in reverse order (oldest first)
+            processed = 0
+            for message in reversed(messages):
+                if message.reply_markup and message.reply_markup.rows:
+                    # Extract buttons
+                    buttons = self.button_analyzer.extract_buttons(message)
+                    if buttons:
+                        self.button_cache.update_message(
+                            message.id,
+                            message.chat_id,
+                            message.text or "",
+                            buttons
+                        )
+                        processed += 1
+
+            logger.info(f"✓ Cache initialized with {processed} messages containing buttons")
+
+        except Exception as e:
+            logger.error(f"Error initializing cache: {e}", exc_info=True)
 
     async def stop(self) -> None:
         """Stop the automation system."""
@@ -211,6 +249,9 @@ class BotAutomation:
                     return
 
             # Find target button
+            logger.info(f"🔍 Step 1: Searching for button with keywords: {Config.BUTTON_1_KEYWORDS}")
+            logger.info(f"📋 Available buttons: {[b.text for b in msg_data.buttons]}")
+
             button = self.button_analyzer.find_button_by_keywords(
                 msg_data.buttons,
                 Config.BUTTON_1_KEYWORDS
@@ -218,14 +259,14 @@ class BotAutomation:
 
             # Fallback to first button
             if not button:
-                logger.warning("Button 1 not found by keywords, using first button")
+                logger.warning("⚠️ Button 1 not found by keywords, using first button")
                 button = self.button_analyzer.get_first_button(msg_data.buttons)
 
             if not button:
                 self.state_machine.error("Step 1: No button available")
                 return
 
-            logger.info(f"Target button: '{button.text}' at [{button.row},{button.column}]")
+            logger.info(f"🎯 Target button: '{button.text}' at [{button.row},{button.column}]")
 
             # Click button
             result = await self.click_executor.click_button_info(message_id, button)
@@ -269,6 +310,8 @@ class BotAutomation:
                 self.state_machine.error("Step 2: No buttons found")
                 return
 
+            logger.info(f"📋 Available buttons: {[b.text for b in msg_data.buttons]}")
+
             # Find button using configured method
             button = None
 
@@ -276,25 +319,27 @@ class BotAutomation:
             if self.step2_button_keywords:
                 keywords = [k.strip() for k in self.step2_button_keywords.split(',') if k.strip()]
                 if keywords:
+                    logger.info(f"🔍 Step 2: Searching for button with keywords: {keywords}")
                     button = self.button_analyzer.find_button_by_keywords(msg_data.buttons, keywords)
                     if button:
-                        logger.info(f"Found Step 2 button by keywords: '{button.text}'")
+                        logger.info(f"✓ Found Step 2 button by keywords: '{button.text}'")
 
             # Fallback to index-based selection
             if not button:
+                logger.info(f"🔍 Step 2: Using index-based selection (index: {self.step2_button_index})")
                 if self.step2_button_index < len(msg_data.buttons):
                     button = msg_data.buttons[self.step2_button_index]
-                    logger.info(f"Using Step 2 button by index {self.step2_button_index}: '{button.text}'")
+                    logger.info(f"✓ Using Step 2 button by index {self.step2_button_index}: '{button.text}'")
                 else:
                     # If index out of range, use first button
-                    logger.warning(f"Step 2 button index {self.step2_button_index} out of range, using first button")
+                    logger.warning(f"⚠️ Step 2 button index {self.step2_button_index} out of range, using first button")
                     button = self.button_analyzer.get_first_button(msg_data.buttons)
 
             if not button:
                 self.state_machine.error("Step 2: No button available")
                 return
 
-            logger.info(f"Target button: '{button.text}' at [{button.row},{button.column}]")
+            logger.info(f"🎯 Target button: '{button.text}' at [{button.row},{button.column}]")
 
             # Click button
             result = await self.click_executor.click_button_info(message_id, button)
@@ -338,7 +383,10 @@ class BotAutomation:
                 self.state_machine.error("Step 3: No buttons found")
                 return
 
+            logger.info(f"📋 Available buttons: {[b.text for b in msg_data.buttons]}")
+
             # Find confirmation button
+            logger.info(f"🔍 Step 3: Searching for confirmation button with keywords: {Config.BUTTON_3_KEYWORDS}")
             button = self.button_analyzer.find_confirmation_button(
                 msg_data.buttons,
                 Config.BUTTON_3_KEYWORDS
@@ -346,24 +394,23 @@ class BotAutomation:
 
             # Fallback to first button
             if not button:
-                logger.warning("Confirmation button not found by keywords, using first button")
+                logger.warning("⚠️ Confirmation button not found by keywords, using first button")
                 button = self.button_analyzer.get_first_button(msg_data.buttons)
 
             if not button:
                 self.state_machine.error("Step 3: No button available")
                 return
 
-            logger.info(f"Target button: '{button.text}' at [{button.row},{button.column}]")
+            logger.info(f"🎯 Target button: '{button.text}' at [{button.row},{button.column}]")
 
             # Click button
             result = await self.click_executor.click_button_info(message_id, button)
 
             if result.success:
                 logger.info(f"✓ Step 3 completed in {result.execution_time*1000:.1f}ms")
-                # Complete automation
-                self.state_machine.complete_automation()
-                await asyncio.sleep(0.05)  # Short wait before returning to idle
-                self.state_machine.reset()
+                # Wait for response message with reservation confirmation
+                await asyncio.sleep(Config.DELAY_BETWEEN_CLICKS)
+                # We'll transition to IDLE when we detect the success message in _check_stabilization
             else:
                 self.state_machine.error(f"Step 3 click failed: {result.message}")
 
@@ -390,7 +437,7 @@ class BotAutomation:
             # For STEP_1: Accept message with buttons (list response)
             if self.state_machine.current_state == AutomationState.STEP_1:
                 # Wait briefly for message to finish editing
-                await asyncio.sleep(0.2)  # 200ms to ensure we get the final state
+                await asyncio.sleep(0.1)  # 100ms to ensure we get the final state
 
                 # Check if we're still in STEP_1 (haven't processed this yet)
                 if self.state_machine.current_state != AutomationState.STEP_1:
@@ -426,7 +473,7 @@ class BotAutomation:
             # For STEP_2: Accept same message with confirmation buttons
             elif self.state_machine.current_state == AutomationState.STEP_2:
                 # Wait briefly for message to finish editing
-                await asyncio.sleep(0.2)  # 200ms to ensure we get the final state
+                await asyncio.sleep(0.1)  # 100ms to ensure we get the final state
 
                 # Check if we're still in STEP_2 (haven't processed this yet)
                 if self.state_machine.current_state != AutomationState.STEP_2:
@@ -453,6 +500,29 @@ class BotAutomation:
                         self.last_button_texts = current_button_texts
                         self.state_machine.complete_step_2(message_id)
                         await self._execute_step_3(message_id)
+            # For STEP_3: Check for reservation success message
+            elif self.state_machine.current_state == AutomationState.STEP_3:
+                # Wait briefly for message to finish editing
+                await asyncio.sleep(0.1)  # 100ms to ensure we get the final state
+
+                # Check if we're still in STEP_3 (haven't processed this yet)
+                if self.state_machine.current_state != AutomationState.STEP_3:
+                    return
+
+                # Refresh msg_data to get latest
+                msg_data = self.button_cache.get_message(message_id)
+                if msg_data:
+                    # Check for success message
+                    text_lower = msg_data.text.lower() if msg_data.text else ""
+
+                    if 'успешно зарезервирована' in text_lower or 'перевозка успешно' in text_lower:
+                        logger.info(f"✅ Step 3 SUCCESS: Reservation confirmed in message {message_id}")
+                        logger.info(f"Response text: '{msg_data.text[:100] if msg_data.text else ''}'")
+                        # Complete automation and return to IDLE
+                        self.state_machine.complete_automation()
+                        await asyncio.sleep(0.1)
+                        self.state_machine.reset()
+                        logger.info("🏁 Automation completed successfully - returned to IDLE")
 
     async def _timeout_checker(self) -> None:
         """Periodically check for state timeouts."""

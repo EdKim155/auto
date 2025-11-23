@@ -26,17 +26,17 @@ class Config:
     # Trigger message configuration
     TRIGGER_TEXT = 'Появились новые перевозки'
 
-    # Delays (in seconds)
-    DELAY_AFTER_TRIGGER = 0.0  # No delay after trigger detection
-    DELAY_BETWEEN_CLICKS = 0.01  # 10ms delay between clicks (faster)
-    STABILIZATION_THRESHOLD = 0.05  # 50ms threshold for stabilization (faster)
+    # Delays (in seconds) - BALANCED for reliability + speed
+    DELAY_AFTER_TRIGGER = 0.25  # Wait 250ms after trigger detection
+    DELAY_BETWEEN_CLICKS = 0.4  # 400ms delay between clicks
+    STABILIZATION_THRESHOLD = 0.3  # 300ms threshold (3x bot edit frequency)
 
     # Stabilization strategy: 'wait', 'predict', 'aggressive'
-    STABILIZATION_STRATEGY = 'wait'
+    STABILIZATION_STRATEGY = 'wait'  # Wait for full stabilization (reliable)
 
     # Retry configuration
     MAX_RETRIES = 3
-    RETRY_DELAY = 0.1  # 100ms delay between retries
+    RETRY_DELAY = 1.0  # 1 second delay between retries
 
     # Monitoring configuration
     MAX_CACHED_MESSAGES = 10
@@ -46,7 +46,8 @@ class Config:
     BUTTON_1_KEYWORDS: List[str] = [
         'список прямых перевозок',
         'список перевозок',
-        'прямые перевозки'
+        'прямые перевозки',
+        'список свободных перевозок'
     ]
 
     BUTTON_2_KEYWORDS: List[str] = []  # First button in list
@@ -60,9 +61,9 @@ class Config:
     ]
 
     # Timeouts for each step (in seconds)
-    STEP_1_TIMEOUT = 5.0
-    STEP_2_TIMEOUT = 5.0
-    STEP_3_TIMEOUT = 5.0
+    STEP_1_TIMEOUT = 15.0  # Increased for slow bot
+    STEP_2_TIMEOUT = 15.0  # Increased for slow bot
+    STEP_3_TIMEOUT = 20.0  # Increased for slow bot
 
     # Logging configuration
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

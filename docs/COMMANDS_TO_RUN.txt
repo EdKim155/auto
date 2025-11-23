@@ -1,0 +1,102 @@
+═══════════════════════════════════════════════════════════════════
+КОМАНДЫ ДЛЯ ПЕРЕКЛЮЧЕНИЯ НА @ACarriers_bot
+Скопируйте и вставьте в терминал на сервере
+═══════════════════════════════════════════════════════════════════
+
+ВАРИАНТ 1: Одной командой (САМЫЙ БЫСТРЫЙ)
+──────────────────────────────────────────────────────────────────
+cd /root/auto && pkill -f main.py; sleep 2; sed -i 's/BOT_USERNAME=.*/BOT_USERNAME=@ACarriers_bot/' .env; nohup python3 main.py > automation_output.log 2>&1 & sleep 3; tail -f bot_automation.log
+
+
+ВАРИАНТ 2: Пошагово (с проверками)
+──────────────────────────────────────────────────────────────────
+
+# Шаг 1: Остановить текущий процесс
+pkill -f main.py
+
+# Шаг 2: Перейти в директорию
+cd /root/auto
+
+# Шаг 3: Изменить бота
+sed -i 's/BOT_USERNAME=.*/BOT_USERNAME=@ACarriers_bot/' .env
+
+# Шаг 4: Проверить изменения
+cat .env | grep BOT_USERNAME
+
+# Шаг 5: Запустить автоматизацию
+nohup python3 main.py > automation_output.log 2>&1 &
+
+# Шаг 6: Проверить запуск
+sleep 3
+ps aux | grep main.py | grep -v grep
+
+# Шаг 7: Смотреть логи
+tail -f bot_automation.log
+
+
+ВАРИАНТ 3: Используя готовый скрипт
+──────────────────────────────────────────────────────────────────
+
+# Если скрипт уже загружен на сервер:
+cd /root/auto
+chmod +x auto_switch_acarriers.sh
+./auto_switch_acarriers.sh
+
+# Или скачайте и выполните:
+cd /root/auto
+curl -o auto_switch_acarriers.sh https://raw.githubusercontent.com/.../auto_switch_acarriers.sh
+chmod +x auto_switch_acarriers.sh
+./auto_switch_acarriers.sh
+
+
+═══════════════════════════════════════════════════════════════════
+ЧТО ДОЛЖНО ПОЯВИТЬСЯ В ЛОГАХ
+═══════════════════════════════════════════════════════════════════
+
+=== Configuration ===
+Bot: @ACarriers_bot
+Session: telegram_bot_automation
+Trigger: 'Появились новые перевозки'
+Strategy: wait
+Stabilization threshold: 500.0ms
+Max retries: 3
+====================
+
+✓ Bot automation started. Waiting for triggers...
+
+--- Status Update ---
+State: IDLE
+Messages: X, Edits: Y, Triggers: Z
+Clicks: N (Success: M, Failed: 0)
+
+
+═══════════════════════════════════════════════════════════════════
+БЫСТРАЯ ПРОВЕРКА
+═══════════════════════════════════════════════════════════════════
+
+# Проверить что процесс запущен:
+ps aux | grep main.py | grep -v grep
+
+# Проверить конфигурацию:
+cat /root/auto/.env | grep BOT_USERNAME
+
+# Проверить последние логи:
+tail -30 /root/auto/bot_automation.log | grep -E "(Configuration|Bot:|State:)"
+
+
+═══════════════════════════════════════════════════════════════════
+ОТКАТ (если что-то пошло не так)
+═══════════════════════════════════════════════════════════════════
+
+pkill -f main.py
+cd /root/auto
+# Восстановить из резервной копии (найти последнюю):
+ls -lt .env.backup.* | head -1
+# Скопировать нужную резервную копию:
+cp .env.backup.YYYYMMDD_HHMMSS .env
+# Или вернуть старого бота вручную:
+sed -i 's/BOT_USERNAME=.*/BOT_USERNAME=@apri1l_test_bot/' .env
+nohup python3 main.py > automation_output.log 2>&1 &
+
+
+═══════════════════════════════════════════════════════════════════

@@ -46,9 +46,8 @@ class AutomationApp2nd:
     async def start(self):
         """Start the application."""
         print("\n" + "="*60)
-        print("TELEGRAM BOT AUTOMATION (2nd Button Version)")
+        print("TELEGRAM BOT AUTOMATION")
         print("Автоматизация нажатия inline-кнопок")
-        print("Clicks SECOND button in Step 2")
         print("="*60 + "\n")
 
         # Validate configuration
@@ -97,7 +96,7 @@ class AutomationApp2nd:
             # Show status every 60 seconds
             asyncio.create_task(self._periodic_status())
 
-            print("\n✓ Automation is running (2nd button version)")
+            print("\n✓ Automation is running")
             print("Press Ctrl+C to stop\n")
 
             # Keep running
@@ -129,7 +128,7 @@ class AutomationApp2nd:
             await self.client.disconnect()
 
         print("\n" + "="*60)
-        print("Final Statistics (2nd Button Version):")
+        print("Final Statistics:")
         print("="*60)
         if self.automation:
             self.automation.print_status()

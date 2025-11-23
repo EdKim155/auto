@@ -81,17 +81,55 @@ class BotAutomation2nd:
 
     async def start(self) -> None:
         """Start the automation system."""
-        logger.info("Starting bot automation (2nd button version)...")
+        logger.info("Starting bot automation...")
         Config.display()
 
         # Register message handlers
         self.message_monitor.register_handlers()
 
+        # Initialize cache with recent messages
+        await self._initialize_cache()
+
         self.is_running = True
-        logger.info("✓ Bot automation started (2nd button version). Waiting for triggers...")
+        logger.info("✓ Bot automation started. Waiting for triggers...")
 
         # Start timeout checker
         asyncio.create_task(self._timeout_checker())
+
+    async def _initialize_cache(self) -> None:
+        """Initialize cache by fetching recent messages from bot."""
+        try:
+            logger.info("Initializing cache with recent messages...")
+
+            # Fetch last 10 messages from bot
+            messages = await self.client.get_messages(
+                self.bot_entity,
+                limit=10
+            )
+
+            if not messages:
+                logger.warning("No messages found in chat history")
+                return
+
+            # Process messages in reverse order (oldest first)
+            processed = 0
+            for message in reversed(messages):
+                if message.reply_markup and message.reply_markup.rows:
+                    # Extract buttons
+                    buttons = self.button_analyzer.extract_buttons(message)
+                    if buttons:
+                        self.button_cache.update_message(
+                            message.id,
+                            message.chat_id,
+                            message.text or "",
+                            buttons
+                        )
+                        processed += 1
+
+            logger.info(f"✓ Cache initialized with {processed} messages containing buttons")
+
+        except Exception as e:
+            logger.error(f"Error initializing cache: {e}", exc_info=True)
 
     async def stop(self) -> None:
         """Stop the automation system."""
@@ -467,7 +505,7 @@ class BotAutomation2nd:
         status = self.get_status()
 
         print("\n" + "="*60)
-        print("AUTOMATION STATUS (2nd Button Version)")
+        print("AUTOMATION STATUS")
         print("="*60)
 
         print(f"\nRunning: {'Yes' if status['running'] else 'No'}")

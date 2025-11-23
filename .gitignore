@@ -43,6 +43,9 @@ wheels/
 *.log
 logs/
 
+# Backups
+backups/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -70,12 +70,12 @@ class MessageMonitor:
     def register_handlers(self) -> None:
         """Register event handlers for messages and edits."""
         # Handler for new messages (FR-1.1)
-        @self.client.on(events.NewMessage(from_users=self.bot_id))
+        @self.client.on(events.NewMessage(chats=[self.bot_entity]))
         async def handle_new_message(event):
             await self._handle_message(event.message, is_edit=False)
 
         # Handler for message edits (FR-1.2)
-        @self.client.on(events.MessageEdited(from_users=self.bot_id))
+        @self.client.on(events.MessageEdited(chats=[self.bot_entity]))
         async def handle_message_edit(event):
             await self._handle_message(event.message, is_edit=True)
 
@@ -108,15 +108,18 @@ class MessageMonitor:
             if buttons:
                 self.button_cache.update_message(message_id, chat_id, text, buttons)
                 button_texts = [f"'{b.text}'" for b in buttons]
-                logger.debug(
-                    f"{'Edit' if is_edit else 'New'} message {message_id}: "
-                    f"{len(buttons)} buttons {button_texts}, text: '{text[:50]}...'"
+                logger.info(
+                    f"📩 {'Edit' if is_edit else 'New'} message {message_id}: "
+                    f"{len(buttons)} buttons → {button_texts}"
                 )
+                if text:
+                    logger.info(f"📝 Message text: '{text[:100]}'")
             else:
-                logger.debug(
-                    f"{'Edit' if is_edit else 'New'} message {message_id}: "
-                    f"no buttons, text: '{text[:50]}...'"
-                )
+                if text:
+                    logger.info(
+                        f"📩 {'Edit' if is_edit else 'New'} message {message_id}: "
+                        f"no buttons, text: '{text[:100]}'"
+                    )
 
             # Check for trigger (FR-1.3)
             if self._is_trigger_message(text):
