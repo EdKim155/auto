@@ -1,0 +1,37 @@
+# Временные файлы
+temp/
+*.tmp
+*.swp
+*.swo
+*~
+
+# Логи
+logs/*.log
+*.log
+
+# Резервные копии
+backups/*.tar.gz
+backups/*.sha256
+backups/critical_files_*/
+
+# Отчеты (можно коммитить шаблоны, но не реальные отчеты с данными)
+backups/*_report_*.md
+backups/requirements_frozen_*.txt
+backups/target_pip_freeze_*.txt
+
+# Конфиденциальные данные
+*.env
+*.session
+*.db
+
+# Checksums
+checksums.sha256
+
+# OS файлы
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*

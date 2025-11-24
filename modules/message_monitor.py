@@ -101,8 +101,19 @@ class MessageMonitor:
             chat_id = message.chat_id
             text = message.text or ""
 
+            # DEBUG: Log reply_markup details
+            has_markup = hasattr(message, 'reply_markup') and message.reply_markup is not None
+            logger.debug(
+                f"{'Edit' if is_edit else 'New'} msg {message_id}: "
+                f"has_markup={has_markup}, "
+                f"markup_type={type(message.reply_markup).__name__ if has_markup else 'None'}"
+            )
+
             # Extract buttons (FR-1.4)
             buttons = self.button_analyzer.extract_buttons(message)
+
+            # DEBUG: Log extraction result
+            logger.debug(f"Extracted {len(buttons)} buttons from message {message_id}")
 
             # Update cache
             if buttons:

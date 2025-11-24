@@ -1,0 +1,14 @@
+# TDLib-based Automation Requirements
+# High-performance version with python-telegram
+
+# TDLib Python client for user accounts (simpler than pytdbot)
+python-telegram>=0.19.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Performance optimizations
+uvloop>=0.19.0  # Fast event loop implementation
+
+# Existing dependencies (if needed for compatibility)
+pydantic>=2.0.0
